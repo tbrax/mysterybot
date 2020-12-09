@@ -5,6 +5,7 @@ import random
 from maincharacter.character import *
 from choose import Choose
 
+
 class MysteryClass():
     def __init__(self):
         self.timeSecondsNight = 60
@@ -16,7 +17,22 @@ class MysteryClass():
         self.validClassGhostHelper = ["cultist"]
         self.cancelMystery()
         self.testClass = False
-        self.choose = Choose()
+        self.mainChannel = 0
+
+        self.nameOrder = ["spirit", "flying dutchman",
+                          "citizen", "dmv worker",
+                          "seer", "cultist"]
+
+        self.choose = Choose(self.nameOrder)
+
+    def getNameOrder(self):
+        return self.nameOrder
+
+    def getMainChannel(self):
+        return self.mainChannel
+    
+    def setMainChannel(self, ch):
+        self.mainChannel = ch
 
     def cancelMystery(self):
         self.stage = 0
@@ -24,7 +40,6 @@ class MysteryClass():
         self.listOfDiscordAuthors = []
         self.characterList = []
         self.globalMessages = []
-        
 
     def addGlobalMessage(self, msg):
         self.globalMessages.append(msg)
@@ -63,35 +78,164 @@ class MysteryClass():
                 ls.append(x)
         return ls
 
-    def useAbility(self, abstr, auth, stage=2):
-        ch = self.getCharFromAuth(auth)
+    def getTargetFromText(self, abstr):
         isValidNum = abstr.isnumeric()
         validLen = len(self.characterList)
-        resp = 0
-        if (isValidNum and ch != 0):
+        if (isValidNum):
             num = int(abstr)
-            if (num >= 0 and num < validLen):
+            if (num > 0 and num <= validLen):
                 target = self.getTargetByNum(num)
-                resp = ch.targetNightAbility(target)
+                return target
+
+        return 0
+
+    def useAbility(self, abstr, auth, stage=2):
+        ch = self.getCharFromAuth(auth)
+        resp = 0
+        if (ch != 0):
+            tar = self.getTargetFromText(abstr)
+            if (tar != 0):
+                resp = ch.targetNightAbility(tar)
         return resp
+
+    def useVote(self, abstr, auth, stage=2):
+        ch = self.getCharFromAuth(auth)
+        resp = 0
+        if (ch != 0):
+            tar = self.getTargetFromText(abstr)
+            if (tar != 0):
+                resp = ch.makeVote(tar)
+        return resp
+
+    def startVoting(self):
+        self.stage = 3
+
+    def isGhostInCharacters(self):
+        isGhost = False
+        for x in self.characterList:
+            if x.getGhost():
+                isGhost = True
+        return isGhost
+
+    def triggerVoteWin(self, votedList):
+        winnerList = []
+        for x in self.characterList:
+            if (x.triggerWin(votedList)):
+                winnerList.append(x)
+        return winnerList
+
+    def charsToNameList(self, ls):
+        nm = []
+        for x in ls:
+            nm.append(x.getDisplayName())
+        return nm
+
+    def endVoting(self):
+        self.stage += 1
+        voteList = []
+        for x in self.characterList:
+            vt = x.getVote()
+            if (vt is not 0):
+                voteList.append(vt)
+        voteName = []
+        voteAmt = []
+        for x in voteList:
+            if x in voteName:
+                idx = voteName.index(x)
+                voteAmt[idx] += 1
+            else:
+                voteName.append(x)
+                voteAmt.append(1)
+
+        voteHighest = 0
+        for x in voteAmt:
+            if x > voteHighest:
+                voteHighest = x
+
+        voteOut = []
+        for x in range(len(voteAmt)):
+            if voteAmt[x] == voteHighest:
+                voteOut.append(voteName[x])
+
+        nmList = self.charsToNameList(voteName)
+
+        votedStr = "Voting results:\n"
+        tstr = ""
+
+        for x in range(len(nmList)):
+            tstr += " {0}-{1} ".format(nmList[x], voteAmt[x])
+            if (x < len(nmList)-1):
+                tstr += ","
+        votedStr += "{0}".format(tstr)
+
+        voteValid = True
+
+        totalVote = voteOut
+
+        vstr = ""
+        for x in range(len(totalVote)):
+            vstr += " {0} ".format(totalVote[x].getDisplayName())
+            if (x < len(nmList)-1):
+                vstr += ","
+
+        if (voteHighest <= 1):
+            votedStr += "\nNot enough votes\n"
+            voteValid = False
+
+        if (len(voteOut) >= 3):
+            votedStr += "\nToo many people with equal votes\n"
+            voteValid = False
+
+        if (not voteValid):
+            totalVote = []
+        else:
+            votedStr += "\nVoted out:\n"
+            votedStr += vstr
+
+        roleStr = "\nRoles:\n"
+        for x in self.characterList:
+            gxt = "HUMAN"
+            if x.getGhost():
+                gxt = "GHOST"
+            roleStr += " {0}({1})({2}) ".format(x.getDisplayName(),
+                                                x.getClassName().upper(),
+                                                gxt)
+
+        votedStr += roleStr
+        winList = self.triggerVoteWin(totalVote)
+        winStr = ""
+        for x in winList:
+            winStr += " {0} ".format(x.getDisplayName())
+
+        votedStr += "\nWinners:\n {0}".format(winStr)
+        self.cancelMystery()
+        return votedStr
 
     def endNight(self):
         ls = []
         for x in self.characterList:
             ls.append(x)
+        random.shuffle(ls)
         ls.sort(reverse=True)
         for x in ls:
             x.triggerNightAbility()
+        self.startVoting()
 
     def classFromName(self, name, num, auth):
-        if name == self.validClassHuman[0]:
-            return CharCitizen(self, num, auth)
-        elif name == self.validClassHuman[1]:
-            return CharDMV(self, num, auth)
-        elif name == self.validClassGhost[0]:
+        
+        name = name.lower()
+        if name == self.nameOrder[0]:
             return CharSpirit(self, num, auth)
-        elif name == self.validClassGhost[1]:
+        elif name == self.nameOrder[1]:
             return CharDutchman(self, num, auth)
+        elif name == self.nameOrder[2]:
+            return CharCitizen(self, num, auth)
+        elif name == self.nameOrder[3]:
+            return CharDMV(self, num, auth)
+        elif name == self.nameOrder[4]:
+            return CharSeer(self, num, auth)
+        elif name == self.nameOrder[5]:
+            return CharHelper(self, num, auth)
 
         return CharCitizen(self, num, auth)
 
@@ -144,7 +288,7 @@ class MysteryClass():
                 classPicked = listGrab[idx]
                 del listGrab[idx]
 
-            potentialList.append(classPicked)       
+            potentialList.append(classPicked)
         return potentialList
 
     def potentialHumanList(self, num):
@@ -154,21 +298,20 @@ class MysteryClass():
         if (num > 4):
             pNum = num+2
         elif (num > 6):
-            pNum = num+3 
+            pNum = num + 3
         for x in range(pNum):
             classPicked = self.basicHuman
             if (len(listGrab) > 0):
                 idx = random.randint(0, len(listGrab)-1)
                 classPicked = listGrab[idx]
                 del listGrab[idx]
-            potentialList.append(classPicked)       
+            potentialList.append(classPicked)
         return potentialList
 
     def validClass(self, mysteryclass, numPlayersRemain):
         return True
 
     def chooseClasses(self, num):
-
         # num = len(characterLst)
         availableClassGhost = self.potentialGhostList(num)
 
@@ -227,21 +370,54 @@ class MysteryClass():
     def startMystery(self):
         self.stage = 2
         num = len(self.listOfDiscordAuthors)
-        availClasses = self.chooseClasses(num)
-        print(availClasses)
-        if (len(availClasses) == len(self.listOfDiscordAuthors)):
-            count = 0
-            for x in self.listOfDiscordAuthors:
-                count += 1
-                idx = random.randint(0, len(availClasses)-1)
+        # availClasses = self.chooseClasses(num)
 
-                if self.testClass:
-                    if self.testClass in availClasses:
-                        idx = availClasses.index(self.testClass)
+        avc = self.choose.makeValidTeams(num)
+        classText = "Roles in this game:\n"
+        authorText = "\nPlayers in this game:\n"
 
-                gclass = availClasses[idx]
-                del availClasses[idx]
-                self.characterList.append(self.classFromName(gclass,count,x))
+        for x in avc:
+            classText += " {0} ".format(x)
+
+        count = 0
+        for x in self.listOfDiscordAuthors:
+            count += 1
+            
+            testing = False
+            if (count == 1) and (self.testClass):
+                testing = True
+                gclass = self.testClass
+
+            if not testing:
+                idx = random.randint(0, len(avc)-1)
+                gclass = avc[idx]
+                del avc[idx]
+
+            self.characterList.append(self.classFromName(gclass, count, x))
+
+        for x in self.characterList:
+            authorText += " {0} ".format(x.getDisplayName())
+
+        instruInfo = "\nGo to the private message and "\
+                     "use your ability by typing the "\
+                     "number of the person you want to target"
+
+        return classText + authorText + instruInfo
+
+        # if (len(availClasses) == len(self.listOfDiscordAuthors)):
+        #    count = 0
+        #    for x in self.listOfDiscordAuthors:
+        #        count += 1
+        #        idx = random.randint(0, len(availClasses)-1)
+
+        #        if self.testClass:
+        #            if self.testClass in availClasses:
+        #                idx = availClasses.index(self.testClass)
+
+        #        gclass = availClasses[idx]
+        #        del availClasses[idx]
+        #        self.characterList.append(self.classFromName(gclass,count,x))
+
 
 def main():
     m = MysteryClass()
@@ -251,33 +427,45 @@ def main():
     m.addDiscordTestName("toby")
     m.addDiscordTestName("jessica")
     m.addDiscordTestName("bob")
+    m.addDiscordTestName("mike")
 
-    m.setTestClass("dmv worker")
+    m.setTestClass("seer")
 
-    m.startMystery()
+    print(m.startMystery())
 
     tx = ""
     for x in m.getCharacterList():
-        tx += "{0} {1}, ".format(x.getDisplayName(),x.getClassName())
+        tx += "{0} {1}, ".format(x.getDisplayName(), x.getClassName())
     print(tx)
 
-    aut = m.listOfDiscordAuthors[0]    
+    aut = m.listOfDiscordAuthors[0]
     ch0 = m.getCharFromAuth(aut)
 
-    #tx1 = m.useAbility("1",aut)
+    # tx1 = m.useAbility("1",aut)
     print(ch0.getInfoString())
 
     wantVal = True
     while(wantVal):
-        val = input("Enter your value: ")
+        val = input("")
         resp = m.useAbility(val, aut)
         if (resp != 0):
             print(resp)
             wantVal = False
 
-    m.endNight()
+    print(m.endNight())
     print("Night End")
     print(ch0.getWaitText())
+    print("Starting voting")
+
+    wantVal = True
+    while(wantVal):
+        val = input("Enter your vote:")
+        resp = m.useVote(val, aut)
+        if (resp != 0):
+            print(resp)
+            wantVal = False
+    print(m.endVoting())
+
 
 if __name__ == "__main__":
     # execute only if run as a script

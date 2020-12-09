@@ -28,7 +28,7 @@ def addMysteryCharacter(aut):
 
 
 def startMystery():
-    mystery.startMystery()
+    return mystery.startMystery()
 
 
 def mysteryParticipants():
@@ -71,7 +71,9 @@ async def on_message(message):
 
     elif msg.startswith("start"):
         if (mystery.stage == 1):
-            startMystery()
+            mystery.setMainChannel(message.channel)
+            globalShow = startMystery()
+            await mystery.getMainChannel().send(globalShow)
             autList = mystery.getCharacterList()
             for a in autList:
                 usr = a.getDiscordAuth()
@@ -86,7 +88,26 @@ async def on_message(message):
         # await message.channel.send(msgcon + mysteryParticipants())
 
     elif msg.startswith("cancel"):
+        cancelMystery()
         await message.channel.send("The mystery has been canceled.")
+
+    elif msg.startswith("endnight"):
+        if (mystery.stage == 2):
+            mystery.endNight()
+            autList = mystery.getCharacterList()
+            for a in autList:
+                usr = a.getDiscordAuth()
+                startmess = a.getWaitText()
+                try:
+                    await usr.send(startmess)
+                except:
+                    print("Unsuccessfully DMed users, try again later.")
+        else:
+            await message.channel.send("It is not nighttime")
+        await mystery.getMainChannel().send("Nighttime is over. Discuss and make your vote.")
+
+    elif msg.startswith("endvote"):
+        await mystery.getMainChannel().send(mystery.endVoting())
 
     elif msg.startswith("joinmystery"):
         if (mystery.acceptingCharacters()):
@@ -109,6 +130,10 @@ async def on_message(message):
             if mystery.getStage() == 2:
                 resp = mystery.useAbility(msg, message.author)
                 if resp != 0:
-                    message.author.send(resp)
+                    await message.author.send(resp)
+            elif mystery.getStage() == 3:
+                resp = mystery.useVote(msg, message.author)
+                if resp != 0:
+                    await message.author.send(resp)
 
 client.run(TOKEN)
